@@ -58,6 +58,7 @@ const params = {
   topRadiusMin: 2.5,
   topRadiusMax: 6.5,
   slabShape: 'cylinder', // cylinder | square | triangle | hexagon
+  rectAspect: 1,
   scaleCurve: 'easeOut', // linear | easeIn | easeOut | easeInOut
   scalePower: 1.1,
   twistMinDeg: -12,
@@ -128,28 +129,35 @@ const buildTower = () => {
     const tScale = curve[params.scaleCurve]?.(t, powerScale) ?? t;
     const tTwist = curve[params.twistCurve]?.(t, powerTwist) ?? t;
 
-    const baseRadius = THREE.MathUtils.lerp(
+    // Plan dimensions vary per floor but remain constant through the slab thickness
+    const baseRadiusRange = THREE.MathUtils.lerp(
       Math.min(params.baseRadiusMin, params.baseRadiusMax),
       Math.max(params.baseRadiusMin, params.baseRadiusMax),
       tScale
     );
-    const topRadius = THREE.MathUtils.lerp(
+    const topRadiusRange = THREE.MathUtils.lerp(
       Math.min(params.topRadiusMin, params.topRadiusMax),
       Math.max(params.topRadiusMin, params.topRadiusMax),
       tScale
     );
+    const planRadius = THREE.MathUtils.lerp(baseRadiusRange, topRadiusRange, tScale);
     const twistRad = THREE.MathUtils.degToRad(
       THREE.MathUtils.lerp(params.twistMinDeg, params.twistMaxDeg, tTwist)
     );
 
-    const geometry = new THREE.CylinderGeometry(
-      topRadius,
-      baseRadius,
-      slabHeight,
-      radialSegments,
-      1,
-      false
-    );
+    let geometry;
+    if (params.slabShape === 'square') {
+      geometry = new THREE.BoxGeometry(planRadius * 2, slabHeight, planRadius * 2 * params.rectAspect);
+    } else {
+      geometry = new THREE.CylinderGeometry(
+        planRadius,
+        planRadius,
+        slabHeight,
+        radialSegments,
+        1,
+        false
+      );
+    }
 
     const color = baseColor.clone().lerp(topColor, t);
     const material = new THREE.MeshStandardMaterial({
@@ -218,6 +226,10 @@ scaleFolder
 scaleFolder
   .add(params, 'slabShape', ['cylinder', 'square', 'triangle', 'hexagon'])
   .name('Slab shape')
+  .onChange(buildTower);
+scaleFolder
+  .add(params, 'rectAspect', 0.5, 2, 0.05)
+  .name('Rect aspect')
   .onChange(buildTower);
 scaleFolder
   .add(params, 'scaleCurve', ['linear', 'easeIn', 'easeOut', 'easeInOut'])
