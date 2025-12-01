@@ -53,12 +53,14 @@ const params = {
   floors: 36,
   floorHeight: 1.25,
   slabThickness: 0.35,
-  baseRadiusMin: 3.5,
-  baseRadiusMax: 7.5,
-  topRadiusMin: 2.5,
-  topRadiusMax: 6.5,
+  baseRadiusMin: 8,
+  baseRadiusMax: 15,
+  topRadiusMin: 6,
+  topRadiusMax: 12,
   slabShape: 'cylinder', // cylinder | square | triangle | hexagon
   rectAspect: 1,
+  columnSpacing: 8,
+  columnRadius: 0.35,
   scaleCurve: 'easeOut', // linear | easeIn | easeOut | easeInOut
   scalePower: 1.1,
   twistMinDeg: -12,
@@ -74,6 +76,8 @@ const params = {
 };
 
 let towerGroup;
+let columnGroup;
+let gridLines;
 
 const curve = {
   linear: (t, power = 1) => t,
@@ -102,6 +106,27 @@ const disposeTower = (group) => {
   });
 };
 
+const disposeColumns = () => {
+  if (columnGroup) {
+    columnGroup.traverse((obj) => {
+      if (obj.isMesh) {
+        obj.geometry?.dispose();
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach((m) => m.dispose());
+        } else {
+          obj.material?.dispose();
+        }
+      }
+    });
+    scene.remove(columnGroup);
+  }
+  if (gridLines) {
+    gridLines.geometry?.dispose();
+    gridLines.material?.dispose();
+    scene.remove(gridLines);
+  }
+};
+
 const buildTower = () => {
   if (towerGroup) {
     disposeTower(towerGroup);
@@ -123,6 +148,17 @@ const buildTower = () => {
     hexagon: 6,
   };
   const radialSegments = shapeSegments[params.slabShape] ?? params.slabSegments;
+  const totalHeight = floors * params.floorHeight;
+  const minPlanRadius = Math.min(
+    params.baseRadiusMin,
+    params.baseRadiusMax,
+    params.topRadiusMin,
+    params.topRadiusMax
+  );
+  const minPlanRadiusZ =
+    params.slabShape === 'square'
+      ? minPlanRadius * params.rectAspect
+      : minPlanRadius;
 
   for (let i = 0; i < floors; i += 1) {
     const t = floors === 1 ? 0 : i / (floors - 1);
@@ -177,6 +213,86 @@ const buildTower = () => {
   }
 
   scene.add(towerGroup);
+
+  // Structural grid and columns (metre units)
+  disposeColumns();
+
+  const spacing = Math.max(2, params.columnSpacing);
+  const halfX = minPlanRadius;
+  const halfZ = minPlanRadiusZ;
+  const points = [];
+  for (let x = -halfX; x <= halfX + 1e-3; x += spacing) {
+    for (let z = -halfZ; z <= halfZ + 1e-3; z += spacing) {
+      points.push([x, z]);
+    }
+  }
+
+  const angleNorm = (angle, step) => {
+    const mod = (angle + step) % step;
+    return mod < 0 ? mod + step : mod;
+  };
+
+  const insideRegularPolygon = (x, z, radius, sides) => {
+    const ang = Math.atan2(z, x);
+    const sector = (2 * Math.PI) / sides;
+    const local = angleNorm(ang, sector);
+    const dist = Math.hypot(x, z);
+    const maxR = radius * Math.cos(Math.PI / sides) / Math.cos(local - Math.PI / sides);
+    return dist <= maxR + 1e-6;
+  };
+
+  const isInside = (x, z) => {
+    if (params.slabShape === 'square') {
+      return Math.abs(x) <= halfX + 1e-6 && Math.abs(z) <= halfZ + 1e-6;
+    }
+    if (params.slabShape === 'cylinder') {
+      return Math.hypot(x, z) <= minPlanRadius + 1e-6;
+    }
+    if (params.slabShape === 'triangle') {
+      return insideRegularPolygon(x, z, minPlanRadius, 3);
+    }
+    if (params.slabShape === 'hexagon') {
+      return insideRegularPolygon(x, z, minPlanRadius, 6);
+    }
+    return false;
+  };
+
+  const columnMat = new THREE.MeshStandardMaterial({
+    color: '#475569',
+    roughness: 0.5,
+    metalness: 0.05,
+  });
+  const colGeom = new THREE.CylinderGeometry(
+    params.columnRadius,
+    params.columnRadius,
+    totalHeight,
+    8,
+    1,
+    false
+  );
+
+  columnGroup = new THREE.Group();
+  points.forEach(([x, z]) => {
+    if (!isInside(x, z)) return;
+    const col = new THREE.Mesh(colGeom, columnMat);
+    col.position.set(x, totalHeight * 0.5, z);
+    columnGroup.add(col);
+  });
+
+  const gridVertices = [];
+  for (let x = -halfX; x <= halfX + 1e-3; x += spacing) {
+    gridVertices.push(x, 0.02, -halfZ, x, 0.02, halfZ);
+  }
+  for (let z = -halfZ; z <= halfZ + 1e-3; z += spacing) {
+    gridVertices.push(-halfX, 0.02, z, halfX, 0.02, z);
+  }
+  const gridGeom = new THREE.BufferGeometry();
+  gridGeom.setAttribute('position', new THREE.Float32BufferAttribute(gridVertices, 3));
+  const gridMat = new THREE.LineBasicMaterial({ color: 0x94a3b8, linewidth: 1 });
+  gridLines = new THREE.LineSegments(gridGeom, gridMat);
+
+  scene.add(columnGroup);
+  scene.add(gridLines);
 };
 
 // GUI bindings
@@ -208,20 +324,20 @@ const slabControl = gui
 
 const scaleFolder = gui.addFolder('Scaling');
 scaleFolder
-  .add(params, 'baseRadiusMin', 0.5, 30, 0.1)
-  .name('Base radius min')
+  .add(params, 'baseRadiusMin', 6, 50, 0.1)
+  .name('Base radius min (m)')
   .onChange(buildTower);
 scaleFolder
-  .add(params, 'baseRadiusMax', 0.5, 30, 0.1)
-  .name('Base radius max')
+  .add(params, 'baseRadiusMax', 6, 50, 0.1)
+  .name('Base radius max (m)')
   .onChange(buildTower);
 scaleFolder
-  .add(params, 'topRadiusMin', 0.5, 30, 0.1)
-  .name('Top radius min')
+  .add(params, 'topRadiusMin', 4, 50, 0.1)
+  .name('Top radius min (m)')
   .onChange(buildTower);
 scaleFolder
-  .add(params, 'topRadiusMax', 0.5, 30, 0.1)
-  .name('Top radius max')
+  .add(params, 'topRadiusMax', 4, 50, 0.1)
+  .name('Top radius max (m)')
   .onChange(buildTower);
 scaleFolder
   .add(params, 'slabShape', ['cylinder', 'square', 'triangle', 'hexagon'])
@@ -229,7 +345,7 @@ scaleFolder
   .onChange(buildTower);
 scaleFolder
   .add(params, 'rectAspect', 0.5, 2, 0.05)
-  .name('Rect aspect')
+  .name('Rect aspect (X:Z)')
   .onChange(buildTower);
 scaleFolder
   .add(params, 'scaleCurve', ['linear', 'easeIn', 'easeOut', 'easeInOut'])
@@ -285,6 +401,16 @@ helperFolder
   .onChange((value) => {
     axes.visible = value;
   });
+
+const structureFolder = gui.addFolder('Structure');
+structureFolder
+  .add(params, 'columnSpacing', 2, 20, 0.5)
+  .name('Column spacing (m)')
+  .onChange(buildTower);
+structureFolder
+  .add(params, 'columnRadius', 0.15, 1.2, 0.05)
+  .name('Column radius (m)')
+  .onChange(buildTower);
 
 buildTower();
 
