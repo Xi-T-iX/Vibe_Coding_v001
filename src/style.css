@@ -31,3 +31,47 @@ canvas {
   opacity: 0.85;
   z-index: 10;
 }
+
+.graph-panel {
+  position: absolute;
+  right: 0.75rem;
+  top: 0.75rem;
+  width: 280px;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  z-index: 9;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.graph-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.graph-meta {
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.graph-canvas {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: linear-gradient(180deg, #f8fafc 0%, #e2e8f0 100%);
+  touch-action: none;
+}
+
+.graph-help {
+  font-size: 0.75rem;
+  color: #64748b;
+  line-height: 1.2;
+}

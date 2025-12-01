@@ -48,6 +48,162 @@ stats.showPanel(0);
 stats.dom.classList.add('stats');
 app.appendChild(stats.dom);
 
+// Graph mapper UI
+const graphPanel = document.createElement('div');
+graphPanel.className = 'graph-panel';
+graphPanel.innerHTML = `
+  <div class="graph-header">
+    <span>Graph Mapper</span>
+    <span class="graph-meta">0 : 1</span>
+  </div>
+  <canvas class="graph-canvas" width="260" height="260"></canvas>
+  <div class="graph-help">Drag points to remap the tower profile (0-1 input & output).</div>
+`;
+app.appendChild(graphPanel);
+
+const graphCanvas = graphPanel.querySelector('canvas');
+const graphCtx = graphCanvas.getContext('2d');
+const graphState = {
+  points: [
+    { x: 0, y: 0 },
+    { x: 0.25, y: 0.05 },
+    { x: 0.75, y: 0.65 },
+    { x: 1, y: 1 },
+  ],
+  dragging: -1,
+};
+
+const clamp01 = (v) => Math.min(1, Math.max(0, v));
+
+const catmull = (p0, p1, p2, p3, t) => {
+  const v0 = (p2 - p0) * 0.5;
+  const v1 = (p3 - p1) * 0.5;
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return (2 * p1 - 2 * p2 + v0 + v1) * t3 + (-3 * p1 + 3 * p2 - 2 * v0 - v1) * t2 + v0 * t + p1;
+};
+
+const graphEvaluate = (t) => {
+  const pts = graphState.points.slice().sort((a, b) => a.x - b.x);
+  const clampedT = clamp01(t);
+  if (pts.length < 2) return clampedT;
+  for (let i = 0; i < pts.length - 1; i += 1) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    if (clampedT >= a.x && clampedT <= b.x) {
+      const localT = (clampedT - a.x) / Math.max(1e-6, b.x - a.x);
+      const p0 = pts[Math.max(0, i - 1)];
+      const p3 = pts[Math.min(pts.length - 1, i + 2)];
+      const y = catmull(p0.y, a.y, b.y, p3.y, localT);
+      return clamp01(y);
+    }
+  }
+  return clamp01(pts[pts.length - 1].y);
+};
+
+const drawGraph = () => {
+  const w = graphCanvas.width;
+  const h = graphCanvas.height;
+  graphCtx.clearRect(0, 0, w, h);
+  // grid
+  graphCtx.strokeStyle = '#e2e8f0';
+  graphCtx.lineWidth = 1;
+  const step = w / 10;
+  for (let i = 0; i <= 10; i += 1) {
+    const x = i * step;
+    graphCtx.beginPath();
+    graphCtx.moveTo(x, 0);
+    graphCtx.lineTo(x, h);
+    graphCtx.stroke();
+    const y = i * step;
+    graphCtx.beginPath();
+    graphCtx.moveTo(0, y);
+    graphCtx.lineTo(w, y);
+    graphCtx.stroke();
+  }
+  // curve
+  const pts = graphState.points.slice().sort((a, b) => a.x - b.x);
+  if (pts.length >= 2) {
+    graphCtx.strokeStyle = '#111827';
+    graphCtx.lineWidth = 2;
+    graphCtx.beginPath();
+    const samples = 80;
+    for (let i = 0; i <= samples; i += 1) {
+      const t = i / samples;
+      const y = graphEvaluate(t);
+      const px = t * w;
+      const py = h - y * h;
+      if (i === 0) graphCtx.moveTo(px, py);
+      else graphCtx.lineTo(px, py);
+    }
+    graphCtx.stroke();
+  }
+  // points
+  pts.forEach((p, idx) => {
+    const px = p.x * w;
+    const py = h - p.y * h;
+    graphCtx.fillStyle = idx === graphState.dragging ? '#0ea5e9' : '#111827';
+    graphCtx.beginPath();
+    graphCtx.arc(px, py, 6, 0, Math.PI * 2);
+    graphCtx.fill();
+    graphCtx.strokeStyle = '#f8fafc';
+    graphCtx.lineWidth = 2;
+    graphCtx.beginPath();
+    graphCtx.arc(px, py, 6, 0, Math.PI * 2);
+    graphCtx.stroke();
+  });
+};
+
+const getCanvasPos = (evt) => {
+  const rect = graphCanvas.getBoundingClientRect();
+  const x = (evt.clientX - rect.left) / rect.width;
+  const y = (evt.clientY - rect.top) / rect.height;
+  return { x: clamp01(x), y: clamp01(1 - y) };
+};
+
+graphCanvas.addEventListener('pointerdown', (evt) => {
+  const { x, y } = getCanvasPos(evt);
+  const w = graphCanvas.width;
+  const h = graphCanvas.height;
+  const hitIdx = graphState.points.findIndex((p) => {
+    const dx = p.x * w - x * w;
+    const dy = p.y * h - y * h;
+    return Math.hypot(dx, dy) < 10;
+  });
+  if (hitIdx >= 0) {
+    graphState.dragging = hitIdx;
+  } else {
+    graphState.points.push({ x, y });
+    graphState.dragging = graphState.points.length - 1;
+  }
+  graphCanvas.setPointerCapture(evt.pointerId);
+  drawGraph();
+});
+
+graphCanvas.addEventListener('pointermove', (evt) => {
+  if (graphState.dragging < 0) return;
+  const { x, y } = getCanvasPos(evt);
+  graphState.points[graphState.dragging] = { x, y };
+  graphState.points = graphState.points
+    .filter(Boolean)
+    .sort((a, b) => a.x - b.x)
+    .map((p, i, arr) => {
+      if (i === 0) return { x: 0, y: p.y };
+      if (i === arr.length - 1) return { x: 1, y: p.y };
+      return p;
+    });
+  drawGraph();
+  buildTower();
+});
+
+graphCanvas.addEventListener('pointerup', (evt) => {
+  graphState.dragging = -1;
+  graphCanvas.releasePointerCapture(evt.pointerId);
+});
+
+graphCanvas.addEventListener('pointerleave', () => {
+  graphState.dragging = -1;
+});
 // Tower parameters and state
 const params = {
   floors: 36,
@@ -172,7 +328,10 @@ const buildTower = () => {
 
   for (let i = 0; i < floors; i += 1) {
     const t = floors === 1 ? 0 : i / (floors - 1);
-    const tScale = graphMap(params.profileCurve, t, powerScale);
+    const tScale =
+      params.profileCurve === 'graph'
+        ? graphEvaluate(t)
+        : graphMap(params.profileCurve, t, powerScale);
     const tTwist = curve[params.twistCurve]?.(t, powerTwist) ?? t;
 
     // Plan dimensions vary per floor but remain constant through the slab thickness
@@ -480,7 +639,7 @@ scaleFolder
   .name('Rect aspect (X:Z)')
   .onChange(buildTower);
 scaleFolder
-  .add(params, 'profileCurve', ['linear', 'easeIn', 'easeOut', 'easeInOut', 'bell', 'arch'])
+  .add(params, 'profileCurve', ['graph', 'linear', 'easeIn', 'easeOut', 'easeInOut', 'bell', 'arch'])
   .name('Profile curve')
   .onChange(buildTower);
 scaleFolder
