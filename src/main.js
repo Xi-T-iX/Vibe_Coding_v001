@@ -388,8 +388,6 @@ const buildTower = () => {
 
   scene.add(towerGroup);
 
-  const halfX = minPlanRadius;
-  const halfZ = minPlanRadiusZ;
   // Structural grid and columns (metre units)
   disposeColumns();
 
@@ -401,6 +399,8 @@ const buildTower = () => {
     params.columnRows >= 2
       ? (2 * halfZ) / Math.max(1, params.columnRows - 1)
       : Math.max(2, params.columnSpacing);
+  const halfX = minPlanRadius;
+  const halfZ = minPlanRadiusZ;
   const points = new Map();
   const addPoint = (x, z) => {
     const key = `${x.toFixed(3)},${z.toFixed(3)}`;
@@ -489,8 +489,7 @@ const buildTower = () => {
       const [x1, z1] = vertices[i];
       const [x2, z2] = vertices[(i + 1) % sides];
       const edgeLen = Math.hypot(x2 - x1, z2 - z1);
-      const edgeStep = Math.min(spacingX, spacingZ);
-      const steps = Math.max(1, Math.ceil(edgeLen / edgeStep));
+      const steps = Math.max(1, Math.ceil(edgeLen / spacing));
       for (let s = 0; s <= steps; s += 1) {
         const t = s / steps;
         addPoint(THREE.MathUtils.lerp(x1, x2, t), THREE.MathUtils.lerp(z1, z2, t));
