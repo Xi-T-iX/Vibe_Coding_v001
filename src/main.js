@@ -61,6 +61,8 @@ const params = {
   rectAspect: 1,
   columnSpacing: 8,
   columnRadius: 0.35,
+  columnRows: 0,
+  columnCols: 0,
   scaleCurve: 'easeOut', // linear | easeIn | easeOut | easeInOut
   scalePower: 1.1,
   twistMinDeg: -12,
@@ -219,7 +221,14 @@ const buildTower = () => {
   // Structural grid and columns (metre units)
   disposeColumns();
 
-  const spacing = Math.max(2, params.columnSpacing);
+  const spacingX =
+    params.columnCols >= 2
+      ? (2 * halfX) / Math.max(1, params.columnCols - 1)
+      : Math.max(2, params.columnSpacing);
+  const spacingZ =
+    params.columnRows >= 2
+      ? (2 * halfZ) / Math.max(1, params.columnRows - 1)
+      : Math.max(2, params.columnSpacing);
   const halfX = minPlanRadius;
   const halfZ = minPlanRadiusZ;
   const points = new Map();
@@ -277,17 +286,24 @@ const buildTower = () => {
   // Perimeter first, then infill inward
   if (params.slabShape === 'square') {
     // Perimeter on rectangle edges
-    for (let x = -halfX; x <= halfX + 1e-3; x += spacing) {
+    const countX = params.columnCols >= 2 ? params.columnCols : Math.max(2, Math.ceil((2 * halfX) / spacingX) + 1);
+    const countZ = params.columnRows >= 2 ? params.columnRows : Math.max(2, Math.ceil((2 * halfZ) / spacingZ) + 1);
+    const stepX = (2 * halfX) / (countX - 1);
+    const stepZ = (2 * halfZ) / (countZ - 1);
+    for (let i = 0; i < countX; i += 1) {
+      const x = -halfX + i * stepX;
       addPoint(x, -halfZ);
       addPoint(x, halfZ);
     }
-    for (let z = -halfZ; z <= halfZ + 1e-3; z += spacing) {
+    for (let j = 0; j < countZ; j += 1) {
+      const z = -halfZ + j * stepZ;
       addPoint(-halfX, z);
       addPoint(halfX, z);
     }
   } else if (params.slabShape === 'cylinder') {
     const radius = minPlanRadius;
-    const segments = Math.max(8, Math.ceil((2 * Math.PI * radius) / spacing));
+    const avgSpacing = 0.5 * (spacingX + spacingZ);
+    const segments = Math.max(8, Math.ceil((2 * Math.PI * radius) / avgSpacing));
     const step = (2 * Math.PI) / segments;
     for (let a = 0; a < 2 * Math.PI; a += step) {
       addPoint(radius * Math.cos(a), radius * Math.sin(a));
@@ -312,8 +328,8 @@ const buildTower = () => {
   }
 
   // Infill grid inward
-  for (let x = -halfX; x <= halfX + 1e-3; x += spacing) {
-    for (let z = -halfZ; z <= halfZ + 1e-3; z += spacing) {
+  for (let x = -halfX; x <= halfX + 1e-3; x += spacingX) {
+    for (let z = -halfZ; z <= halfZ + 1e-3; z += spacingZ) {
       addPoint(x, z);
     }
   }
@@ -330,12 +346,12 @@ const buildTower = () => {
   // Modular structural grid drawn on each slab top surface
   gridGroup = new THREE.Group();
   const gridColor = 0x94a3b8;
-  const sampleStep = Math.max(0.25, spacing / 4);
+  const sampleStep = Math.max(0.25, Math.min(spacingX, spacingZ) / 4);
 
   const buildGridLines = (y) => {
     const vertices = [];
     // X-directed lines
-    for (let x = -halfX; x <= halfX + 1e-3; x += spacing) {
+    for (let x = -halfX; x <= halfX + 1e-3; x += spacingX) {
       let inSeg = false;
       let start = 0;
       for (let z = -halfZ; z <= halfZ + sampleStep; z += sampleStep) {
@@ -352,7 +368,7 @@ const buildTower = () => {
       }
     }
     // Z-directed lines
-    for (let z = -halfZ; z <= halfZ + 1e-3; z += spacing) {
+    for (let z = -halfZ; z <= halfZ + 1e-3; z += spacingZ) {
       let inSeg = false;
       let start = 0;
       for (let x = -halfX; x <= halfX + sampleStep; x += sampleStep) {
@@ -499,6 +515,14 @@ structureFolder
 structureFolder
   .add(params, 'columnRadius', 0.15, 1.2, 0.05)
   .name('Column radius (m)')
+  .onChange(buildTower);
+structureFolder
+  .add(params, 'columnCols', 0, 50, 1)
+  .name('Grid columns (0=auto)')
+  .onChange(buildTower);
+structureFolder
+  .add(params, 'columnRows', 0, 50, 1)
+  .name('Grid rows (0=auto)')
   .onChange(buildTower);
 
 buildTower();
