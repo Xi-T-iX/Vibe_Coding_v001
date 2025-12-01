@@ -69,7 +69,7 @@ const params = {
   twistMaxDeg: 110,
   twistCurve: 'easeInOut', // linear | easeIn | easeOut | easeInOut
   twistPower: 1.15,
-  slabSegments: 48,
+  slabSegments: 32,
   colorBottom: '#0ea5e9',
   colorTop: '#f97316',
   wireframe: false,
@@ -335,18 +335,26 @@ const buildTower = () => {
   }
 
   columnGroup = new THREE.Group();
-  points.forEach(([x, z]) => {
-    const col = new THREE.Mesh(colGeom, columnMat);
-    col.position.set(x, totalHeight * 0.5, z);
-    columnGroup.add(col);
-  });
+  const instanceCount = points.size;
+  if (instanceCount > 0) {
+    const instanced = new THREE.InstancedMesh(colGeom, columnMat, instanceCount);
+    let idx = 0;
+    const matrix = new THREE.Matrix4();
+    points.forEach(([x, z]) => {
+      matrix.makeTranslation(x, totalHeight * 0.5, z);
+      instanced.setMatrixAt(idx, matrix);
+      idx += 1;
+    });
+    instanced.instanceMatrix.needsUpdate = true;
+    columnGroup.add(instanced);
+  }
 
   scene.add(columnGroup);
 
   // Modular structural grid drawn on each slab top surface
   gridGroup = new THREE.Group();
   const gridColor = 0x94a3b8;
-  const sampleStep = Math.max(0.25, Math.min(spacingX, spacingZ) / 4);
+  const sampleStep = Math.max(0.5, Math.min(spacingX, spacingZ) * 0.5);
 
   const buildGridLines = (y) => {
     const vertices = [];
