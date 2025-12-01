@@ -53,8 +53,11 @@ const params = {
   floors: 36,
   floorHeight: 1.25,
   slabThickness: 0.35,
-  radiusMin: 3.5,
-  radiusMax: 7.5,
+  baseRadiusMin: 3.5,
+  baseRadiusMax: 7.5,
+  topRadiusMin: 2.5,
+  topRadiusMax: 6.5,
+  slabShape: 'cylinder', // cylinder | square | triangle | hexagon
   scaleCurve: 'easeOut', // linear | easeIn | easeOut | easeInOut
   scalePower: 1.1,
   twistMinDeg: -12,
@@ -112,14 +115,27 @@ const buildTower = () => {
   const baseColor = new THREE.Color(params.colorBottom);
   const topColor = new THREE.Color(params.colorTop);
 
+  const shapeSegments = {
+    cylinder: params.slabSegments,
+    square: 4,
+    triangle: 3,
+    hexagon: 6,
+  };
+  const radialSegments = shapeSegments[params.slabShape] ?? params.slabSegments;
+
   for (let i = 0; i < floors; i += 1) {
     const t = floors === 1 ? 0 : i / (floors - 1);
     const tScale = curve[params.scaleCurve]?.(t, powerScale) ?? t;
     const tTwist = curve[params.twistCurve]?.(t, powerTwist) ?? t;
 
-    const radius = THREE.MathUtils.lerp(
-      Math.min(params.radiusMin, params.radiusMax),
-      Math.max(params.radiusMin, params.radiusMax),
+    const baseRadius = THREE.MathUtils.lerp(
+      Math.min(params.baseRadiusMin, params.baseRadiusMax),
+      Math.max(params.baseRadiusMin, params.baseRadiusMax),
+      tScale
+    );
+    const topRadius = THREE.MathUtils.lerp(
+      Math.min(params.topRadiusMin, params.topRadiusMax),
+      Math.max(params.topRadiusMin, params.topRadiusMax),
       tScale
     );
     const twistRad = THREE.MathUtils.degToRad(
@@ -127,10 +143,10 @@ const buildTower = () => {
     );
 
     const geometry = new THREE.CylinderGeometry(
-      radius,
-      radius,
+      topRadius,
+      baseRadius,
       slabHeight,
-      params.slabSegments,
+      radialSegments,
       1,
       false
     );
@@ -184,12 +200,24 @@ const slabControl = gui
 
 const scaleFolder = gui.addFolder('Scaling');
 scaleFolder
-  .add(params, 'radiusMin', 0.5, 20, 0.1)
-  .name('Radius min')
+  .add(params, 'baseRadiusMin', 0.5, 30, 0.1)
+  .name('Base radius min')
   .onChange(buildTower);
 scaleFolder
-  .add(params, 'radiusMax', 0.5, 20, 0.1)
-  .name('Radius max')
+  .add(params, 'baseRadiusMax', 0.5, 30, 0.1)
+  .name('Base radius max')
+  .onChange(buildTower);
+scaleFolder
+  .add(params, 'topRadiusMin', 0.5, 30, 0.1)
+  .name('Top radius min')
+  .onChange(buildTower);
+scaleFolder
+  .add(params, 'topRadiusMax', 0.5, 30, 0.1)
+  .name('Top radius max')
+  .onChange(buildTower);
+scaleFolder
+  .add(params, 'slabShape', ['cylinder', 'square', 'triangle', 'hexagon'])
+  .name('Slab shape')
   .onChange(buildTower);
 scaleFolder
   .add(params, 'scaleCurve', ['linear', 'easeIn', 'easeOut', 'easeInOut'])

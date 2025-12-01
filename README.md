@@ -5,6 +5,7 @@ Parametric tower generator for the browser, built with Three.js and lil-gui. It 
 ## Features
 - Interactive sliders for floor count, floor height, twist min/max, scale min/max, and curve intensity.
 - Separate floor spacing vs. slab thickness for realistic stack proportions.
+- Independent base/top radius ranges and selectable slab shape (cylinder, square, triangle, hexagon).
 - Gradient coloring from base to top with live color pickers.
 - Orbit controls, grid/axes toggles, and stats overlay for quick inspection.
 - Fast rebuild of the tower mesh for rapid iteration on form studies.
@@ -17,6 +18,6 @@ Parametric tower generator for the browser, built with Three.js and lil-gui. It 
 
 ## Controls
 - Camera: left-drag orbit, right-drag pan, scroll to zoom.
-- Geometry: tweak floors, floor height, slab thickness, radius min/max, twist min/max, and curve modes in the GUI.
+- Geometry: tweak floors, floor height, slab thickness, base/top radius min/max, slab shape, twist min/max, and curve modes in the GUI.
 - Style: adjust bottom/top colors, wireframe toggle.
 - Helpers: toggle grid/axes, view FPS via stats overlay.***
