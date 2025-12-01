@@ -52,6 +52,7 @@ app.appendChild(stats.dom);
 const params = {
   floors: 36,
   floorHeight: 1.25,
+  slabThickness: 0.35,
   radiusMin: 3.5,
   radiusMax: 7.5,
   scaleCurve: 'easeOut', // linear | easeIn | easeOut | easeInOut
@@ -107,6 +108,7 @@ const buildTower = () => {
   const floors = Math.max(1, Math.floor(params.floors));
   const powerScale = clampPower(params.scalePower);
   const powerTwist = clampPower(params.twistPower);
+  const slabHeight = Math.max(0.05, Math.min(params.slabThickness, params.floorHeight));
   const baseColor = new THREE.Color(params.colorBottom);
   const topColor = new THREE.Color(params.colorTop);
 
@@ -127,7 +129,7 @@ const buildTower = () => {
     const geometry = new THREE.CylinderGeometry(
       radius,
       radius,
-      params.floorHeight,
+      slabHeight,
       params.slabSegments,
       1,
       false
@@ -142,7 +144,8 @@ const buildTower = () => {
     });
 
     const slab = new THREE.Mesh(geometry, material);
-    slab.position.y = i * params.floorHeight + params.floorHeight * 0.5;
+    const baseY = i * params.floorHeight;
+    slab.position.y = baseY + slabHeight * 0.5;
     slab.rotation.y = twistRad;
     slab.castShadow = false;
     slab.receiveShadow = false;
@@ -161,7 +164,23 @@ gui
 gui
   .add(params, 'floorHeight', 0.2, 4, 0.05)
   .name('Floor height')
-  .onChange(buildTower);
+  .onChange((value) => {
+    // Prevent slab thickness from exceeding floor spacing
+    if (params.slabThickness > value) {
+      params.slabThickness = value;
+      slabControl.updateDisplay();
+    }
+    buildTower();
+  });
+
+const slabControl = gui
+  .add(params, 'slabThickness', 0.05, 2, 0.01)
+  .name('Slab thickness')
+  .onChange((value) => {
+    params.slabThickness = Math.min(value, params.floorHeight);
+    slabControl.updateDisplay();
+    buildTower();
+  });
 
 const scaleFolder = gui.addFolder('Scaling');
 scaleFolder
