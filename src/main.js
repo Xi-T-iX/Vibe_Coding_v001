@@ -222,12 +222,13 @@ const buildTower = () => {
   const spacing = Math.max(2, params.columnSpacing);
   const halfX = minPlanRadius;
   const halfZ = minPlanRadiusZ;
-  const points = [];
-  for (let x = -halfX; x <= halfX + 1e-3; x += spacing) {
-    for (let z = -halfZ; z <= halfZ + 1e-3; z += spacing) {
-      points.push([x, z]);
+  const points = new Map();
+  const addPoint = (x, z) => {
+    const key = `${x.toFixed(3)},${z.toFixed(3)}`;
+    if (!points.has(key) && isInside(x, z)) {
+      points.set(key, [x, z]);
     }
-  }
+  };
 
   const angleNorm = (angle, step) => {
     const mod = (angle + step) % step;
@@ -273,9 +274,52 @@ const buildTower = () => {
     false
   );
 
+  // Perimeter first, then infill inward
+  if (params.slabShape === 'square') {
+    // Perimeter on rectangle edges
+    for (let x = -halfX; x <= halfX + 1e-3; x += spacing) {
+      addPoint(x, -halfZ);
+      addPoint(x, halfZ);
+    }
+    for (let z = -halfZ; z <= halfZ + 1e-3; z += spacing) {
+      addPoint(-halfX, z);
+      addPoint(halfX, z);
+    }
+  } else if (params.slabShape === 'cylinder') {
+    const radius = minPlanRadius;
+    const segments = Math.max(8, Math.ceil((2 * Math.PI * radius) / spacing));
+    const step = (2 * Math.PI) / segments;
+    for (let a = 0; a < 2 * Math.PI; a += step) {
+      addPoint(radius * Math.cos(a), radius * Math.sin(a));
+    }
+  } else {
+    const sides = params.slabShape === 'triangle' ? 3 : 6;
+    const vertices = [];
+    for (let i = 0; i < sides; i += 1) {
+      const a = Math.PI / 2 + (i * 2 * Math.PI) / sides;
+      vertices.push([minPlanRadius * Math.cos(a), minPlanRadius * Math.sin(a)]);
+    }
+    for (let i = 0; i < sides; i += 1) {
+      const [x1, z1] = vertices[i];
+      const [x2, z2] = vertices[(i + 1) % sides];
+      const edgeLen = Math.hypot(x2 - x1, z2 - z1);
+      const steps = Math.max(1, Math.ceil(edgeLen / spacing));
+      for (let s = 0; s <= steps; s += 1) {
+        const t = s / steps;
+        addPoint(THREE.MathUtils.lerp(x1, x2, t), THREE.MathUtils.lerp(z1, z2, t));
+      }
+    }
+  }
+
+  // Infill grid inward
+  for (let x = -halfX; x <= halfX + 1e-3; x += spacing) {
+    for (let z = -halfZ; z <= halfZ + 1e-3; z += spacing) {
+      addPoint(x, z);
+    }
+  }
+
   columnGroup = new THREE.Group();
   points.forEach(([x, z]) => {
-    if (!isInside(x, z)) return;
     const col = new THREE.Mesh(colGeom, columnMat);
     col.position.set(x, totalHeight * 0.5, z);
     columnGroup.add(col);
