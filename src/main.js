@@ -63,6 +63,7 @@ const params = {
   columnRadius: 0.35,
   columnRows: 0,
   columnCols: 0,
+  profileCurve: 'linear', // linear | easeIn | easeOut | easeInOut | bell | arch
   scaleCurve: 'easeOut', // linear | easeIn | easeOut | easeInOut
   scalePower: 1.1,
   twistMinDeg: -12,
@@ -91,9 +92,21 @@ const curve = {
       ? 0.5 * Math.pow(clamped * 2, power)
       : 1 - 0.5 * Math.pow((1 - clamped) * 2, power);
   },
+  bell: (t) => {
+    const clamped = Math.min(Math.max(t, 0), 1);
+    return Math.sin(Math.PI * clamped);
+  },
+  arch: (t) => {
+    const clamped = Math.min(Math.max(t, 0), 1);
+    return 1 - Math.pow(2 * clamped - 1, 2);
+  },
 };
 
 const clampPower = (value) => Math.max(0.2, value);
+const graphMap = (type, t, power = 1) => {
+  const fn = curve[type] || curve.linear;
+  return fn(t, power);
+};
 
 const disposeTower = (group) => {
   group.traverse((obj) => {
@@ -138,6 +151,7 @@ const buildTower = () => {
   }
 
   towerGroup = new THREE.Group();
+  const floorPlans = [];
   const floors = Math.max(1, Math.floor(params.floors));
   const powerScale = clampPower(params.scalePower);
   const powerTwist = clampPower(params.twistPower);
@@ -153,20 +167,12 @@ const buildTower = () => {
   };
   const radialSegments = shapeSegments[params.slabShape] ?? params.slabSegments;
   const totalHeight = floors * params.floorHeight;
-  const minPlanRadius = Math.min(
-    params.baseRadiusMin,
-    params.baseRadiusMax,
-    params.topRadiusMin,
-    params.topRadiusMax
-  );
-  const minPlanRadiusZ =
-    params.slabShape === 'square'
-      ? minPlanRadius * params.rectAspect
-      : minPlanRadius;
+  const minPlanRadius = Math.min(...floorPlans.map((p) => p.halfX));
+  const minPlanRadiusZ = Math.min(...floorPlans.map((p) => p.halfZ));
 
   for (let i = 0; i < floors; i += 1) {
     const t = floors === 1 ? 0 : i / (floors - 1);
-    const tScale = curve[params.scaleCurve]?.(t, powerScale) ?? t;
+    const tScale = graphMap(params.profileCurve, t, powerScale);
     const tTwist = curve[params.twistCurve]?.(t, powerTwist) ?? t;
 
     // Plan dimensions vary per floor but remain constant through the slab thickness
@@ -214,6 +220,11 @@ const buildTower = () => {
     slab.castShadow = false;
     slab.receiveShadow = false;
     towerGroup.add(slab);
+
+    floorPlans.push({
+      halfX: planRadius,
+      halfZ: params.slabShape === 'square' ? planRadius * params.rectAspect : planRadius,
+    });
   }
 
   scene.add(towerGroup);
@@ -357,19 +368,22 @@ const buildTower = () => {
   const gridColor = 0x94a3b8;
   const sampleStep = Math.max(0.5, Math.min(spacingX, spacingZ) * 0.5);
 
-  const buildGridLines = (y) => {
+  const buildGridLines = (y, halfXLocal, halfZLocal) => {
     const vertices = [];
     // X-directed lines
-    for (let x = -halfX; x <= halfX + 1e-3; x += spacingX) {
+    for (let x = -halfXLocal; x <= halfXLocal + 1e-3; x += spacingX) {
       let inSeg = false;
       let start = 0;
-      for (let z = -halfZ; z <= halfZ + sampleStep; z += sampleStep) {
-        const inside = isInside(x, z);
+      for (let z = -halfZLocal; z <= halfZLocal + sampleStep; z += sampleStep) {
+        const inside =
+          params.slabShape === 'square'
+            ? Math.abs(x) <= halfXLocal + 1e-6 && Math.abs(z) <= halfZLocal + 1e-6
+            : isInside(x, z);
         if (inside && !inSeg) {
           start = z;
           inSeg = true;
         }
-        if ((!inside || z >= halfZ) && inSeg) {
+        if ((!inside || z >= halfZLocal) && inSeg) {
           const end = inside ? z : z - sampleStep;
           vertices.push(x, y, start, x, y, end);
           inSeg = false;
@@ -377,16 +391,19 @@ const buildTower = () => {
       }
     }
     // Z-directed lines
-    for (let z = -halfZ; z <= halfZ + 1e-3; z += spacingZ) {
+    for (let z = -halfZLocal; z <= halfZLocal + 1e-3; z += spacingZ) {
       let inSeg = false;
       let start = 0;
-      for (let x = -halfX; x <= halfX + sampleStep; x += sampleStep) {
-        const inside = isInside(x, z);
+      for (let x = -halfXLocal; x <= halfXLocal + sampleStep; x += sampleStep) {
+        const inside =
+          params.slabShape === 'square'
+            ? Math.abs(x) <= halfXLocal + 1e-6 && Math.abs(z) <= halfZLocal + 1e-6
+            : isInside(x, z);
         if (inside && !inSeg) {
           start = x;
           inSeg = true;
         }
-        if ((!inside || x >= halfX) && inSeg) {
+        if ((!inside || x >= halfXLocal) && inSeg) {
           const end = inside ? x : x - sampleStep;
           vertices.push(start, y, z, end, y, z);
           inSeg = false;
@@ -403,7 +420,8 @@ const buildTower = () => {
 
   for (let i = 0; i < floors; i += 1) {
     const y = i * params.floorHeight + slabHeight + 0.02;
-    buildGridLines(y);
+    const plan = floorPlans[i] || { halfX, halfZ };
+    buildGridLines(y, plan.halfX, plan.halfZ);
   }
 
   scene.add(gridGroup);
@@ -462,8 +480,8 @@ scaleFolder
   .name('Rect aspect (X:Z)')
   .onChange(buildTower);
 scaleFolder
-  .add(params, 'scaleCurve', ['linear', 'easeIn', 'easeOut', 'easeInOut'])
-  .name('Scale curve')
+  .add(params, 'profileCurve', ['linear', 'easeIn', 'easeOut', 'easeInOut', 'bell', 'arch'])
+  .name('Profile curve')
   .onChange(buildTower);
 scaleFolder
   .add(params, 'scalePower', 0.2, 3, 0.05)
