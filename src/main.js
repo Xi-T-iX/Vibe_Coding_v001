@@ -77,7 +77,7 @@ const params = {
 
 let towerGroup;
 let columnGroup;
-let gridLines;
+let gridGroup;
 
 const curve = {
   linear: (t, power = 1) => t,
@@ -120,10 +120,12 @@ const disposeColumns = () => {
     });
     scene.remove(columnGroup);
   }
-  if (gridLines) {
-    gridLines.geometry?.dispose();
-    gridLines.material?.dispose();
-    scene.remove(gridLines);
+  if (gridGroup) {
+    gridGroup.traverse((obj) => {
+      obj.geometry?.dispose();
+      obj.material?.dispose();
+    });
+    scene.remove(gridGroup);
   }
 };
 
@@ -279,20 +281,63 @@ const buildTower = () => {
     columnGroup.add(col);
   });
 
-  const gridVertices = [];
-  for (let x = -halfX; x <= halfX + 1e-3; x += spacing) {
-    gridVertices.push(x, 0.02, -halfZ, x, 0.02, halfZ);
-  }
-  for (let z = -halfZ; z <= halfZ + 1e-3; z += spacing) {
-    gridVertices.push(-halfX, 0.02, z, halfX, 0.02, z);
-  }
-  const gridGeom = new THREE.BufferGeometry();
-  gridGeom.setAttribute('position', new THREE.Float32BufferAttribute(gridVertices, 3));
-  const gridMat = new THREE.LineBasicMaterial({ color: 0x94a3b8, linewidth: 1 });
-  gridLines = new THREE.LineSegments(gridGeom, gridMat);
-
   scene.add(columnGroup);
-  scene.add(gridLines);
+
+  // Modular structural grid drawn on each slab top surface
+  gridGroup = new THREE.Group();
+  const gridColor = 0x94a3b8;
+  const sampleStep = Math.max(0.25, spacing / 4);
+
+  const buildGridLines = (y) => {
+    const vertices = [];
+    // X-directed lines
+    for (let x = -halfX; x <= halfX + 1e-3; x += spacing) {
+      let inSeg = false;
+      let start = 0;
+      for (let z = -halfZ; z <= halfZ + sampleStep; z += sampleStep) {
+        const inside = isInside(x, z);
+        if (inside && !inSeg) {
+          start = z;
+          inSeg = true;
+        }
+        if ((!inside || z >= halfZ) && inSeg) {
+          const end = inside ? z : z - sampleStep;
+          vertices.push(x, y, start, x, y, end);
+          inSeg = false;
+        }
+      }
+    }
+    // Z-directed lines
+    for (let z = -halfZ; z <= halfZ + 1e-3; z += spacing) {
+      let inSeg = false;
+      let start = 0;
+      for (let x = -halfX; x <= halfX + sampleStep; x += sampleStep) {
+        const inside = isInside(x, z);
+        if (inside && !inSeg) {
+          start = x;
+          inSeg = true;
+        }
+        if ((!inside || x >= halfX) && inSeg) {
+          const end = inside ? x : x - sampleStep;
+          vertices.push(start, y, z, end, y, z);
+          inSeg = false;
+        }
+      }
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    const mat = new THREE.LineBasicMaterial({ color: gridColor });
+    const lines = new THREE.LineSegments(geom, mat);
+    gridGroup.add(lines);
+  };
+
+  for (let i = 0; i < floors; i += 1) {
+    const y = i * params.floorHeight + slabHeight + 0.02;
+    buildGridLines(y);
+  }
+
+  scene.add(gridGroup);
 };
 
 // GUI bindings
